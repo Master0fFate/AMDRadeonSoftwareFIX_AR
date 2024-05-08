@@ -12,7 +12,7 @@ $TaskExecutable = "C:\Program Files\AMD\CNext\CNext\RadeonSoftware.exe" # Change
 
 $Action = New-ScheduledTaskAction -Execute $TaskExecutable
 $Trigger = New-ScheduledTaskTrigger -AtLogon
-$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -Hidden -Compatibility Win8
+$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -Hidden
 $Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 
 Register-ScheduledTask -TaskName $TaskName -Description $TaskDescription -Action $Action -Trigger $Trigger -Settings $Settings -Principal $Principal -TaskPath $TaskPath
