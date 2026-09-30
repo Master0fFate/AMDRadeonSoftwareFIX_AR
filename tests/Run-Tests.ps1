@@ -30,6 +30,16 @@ $module = Get-Module RadeonStartup
         Assert (@(Get-Installations (Join-Path $root 'missing')).Count -eq 0) 'Missing explicit executable not guessed'
     } finally { Remove-Item -LiteralPath $root -Recurse -Force }
     Assert (@(Get-Installations).Count -ge 0) 'Default discovery tolerates missing registry records'
+    # Real legacy-task discovery distinguishes absence, duplicates and access failures.
+    function Get-Command { [pscustomobject]@{ Name='Get-ScheduledTask' } }
+    function Get-ScheduledTask { @([pscustomobject]@{ TaskName='RadeonSoftwareAutostart'; State='Ready'; Principal='SYSTEM'; Actions='old' }, [pscustomobject]@{ TaskName='other'; State='Ready'; Principal='user'; Actions='other' }) }
+    Assert ((Get-LegacyTask).Tasks.Count -eq 1) 'Only the exact legacy task is reported'
+    function Get-ScheduledTask { @() }
+    Assert ((Get-LegacyTask).Status -eq 'Checked' -and (Get-LegacyTask).Tasks.Count -eq 0) 'No legacy task reported as checked absence'
+    function Get-ScheduledTask { throw 'Access denied' }
+    Assert ((Get-LegacyTask).Status -eq 'Unknown') 'Task access failure is never called absence'
+    function Get-Command { $null }
+    Assert ((Get-LegacyTask).Status -eq 'Unavailable') 'Missing task cmdlet reported separately'
     $script:exists=$false
     $script:shortcut=[pscustomobject]@{ TargetPath=''; WorkingDirectory=''; Arguments='old'; Description=''; WindowStyle=0 }
     $script:shortcut | Add-Member ScriptMethod Save { $script:exists=$true }
@@ -49,6 +59,16 @@ $module = Get-Module RadeonStartup
     $script:shortcut.Description=$script:ShortcutMarker
     Assert ((Set-RadeonStartup -Remove) -eq 'Removed') 'Owned shortcut removed'
     Assert ((Set-RadeonStartup -Remove) -eq 'NotInstalled') 'Repeated removal idempotent'
+    # Failed readback must never reach replacement, and staged cleanup is attempted.
+    $script:exists=$false; $script:moves=0; $script:cleanups=0
+    function Move-Item { $script:moves++ }
+    function Remove-Item { $script:cleanups++; $script:exists=$false }
+    $script:shortcut | Add-Member ScriptMethod Save { $script:exists=$true; $this.TargetPath='wrong' } -Force
+    Assert-Throws { Set-RadeonStartup $install } 'Invalid shortcut readback fails closed'
+    Assert ($script:moves -eq 0 -and $script:cleanups -eq 1) 'Invalid staged link cleaned without replacing destination'
+    $script:exists=$false
+    function Remove-Item { throw 'Cleanup denied' }
+    Assert-Throws { Set-RadeonStartup $install } 'Cleanup failure is surfaced'
     $script:signature=[pscustomobject]@{ Trusted=$false; Status='NotSigned'; Publisher='' }
     function Get-Signature { $script:signature }
     Assert-Throws { Assert-TrustedInstallation $install } 'Untrusted executable blocked'
